@@ -175,10 +175,8 @@ class HeuristicAgent(BaseAgent):
 
                     # Thế cờ của đối thủ.
                     elif enemy_count > 0 and own_count == 0:
-                        total_score -= (
-                            self.pattern_scores[enemy_count] * 1.1
-                        )
-
+                        multiplier = 2.0 if enemy_count >= 3 else 1.2
+                        total_score -= self.pattern_scores[enemy_count] * multiplier
         return total_score
 
     # --------------------------------------------------
