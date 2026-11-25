@@ -123,10 +123,6 @@ python -m pip install numpy
 
 Mở Command Prompt (CMD), di chuyển đến thư mục dự án:
 
-```cmd
-cd /d D:\Downloads\TTNTNC\TTNTNC-Nhom11\gokumo_11x11_ai_research
-```
-
 ### 5.3. Khởi chạy giao diện trò chơi
 
 Chạy lệnh:
