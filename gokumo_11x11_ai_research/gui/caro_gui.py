@@ -1,14 +1,21 @@
+from pathlib import Path
 import tkinter as tk
 from tkinter import messagebox
 
+from config import CFG
 from environment.caro_env import CaroEnv
 from agents.random_agent import RandomAgent
 from agents.heuristic_agent import HeuristicAgent
 from agents.minimax_agent import MinimaxAgent
+from agents.pure_mcts_agent import PureMCTSAgent
+from agents.alphazero_agent import AlphaZeroAgent
+
+
+AGENT_OPTIONS = ["Random", "Heuristic", "Minimax", "PureMCTS", "AlphaZero"]
 
 
 class CaroGUI:
-    # Neon purple theme inspired by the reference images.
+    # Neon purple theme
     BG = "#21083f"
     PANEL = "#310d55"
     PANEL_LIGHT = "#42116d"
@@ -23,9 +30,9 @@ class CaroGUI:
 
     def __init__(self, root):
         self.root = root
-        self.root.title("GOKUMO 11 - CARO AI")
-        self.root.geometry("1000x700")
-        self.root.minsize(760, 560)
+        self.root.title("GOKUMO 11 - CARO AI RESEARCH")
+        self.root.geometry("1040x720")
+        self.root.minsize(780, 580)
         self.root.configure(bg=self.BG)
         self.root.resizable(True, True)
 
@@ -36,6 +43,7 @@ class CaroGUI:
         self.game_over = False
         self.paused = True
         self.ai_job = None
+        self.last_action = None
         self.cell_size = 48
         self.board_canvas = None
         self.status_label = None
@@ -44,9 +52,9 @@ class CaroGUI:
 
         self.mode_var = tk.StringVar(value="Người vs Người")
         self.human_var = tk.StringVar(value="X")
-        self.human_ai_var = tk.StringVar(value="Heuristic")
-        self.x_agent_var = tk.StringVar(value="Heuristic")
-        self.o_agent_var = tk.StringVar(value="Random")
+        self.human_ai_var = tk.StringVar(value="AlphaZero")
+        self.x_agent_var = tk.StringVar(value="AlphaZero")
+        self.o_agent_var = tk.StringVar(value="Heuristic")
 
         self.build_setup_screen()
 
@@ -128,7 +136,6 @@ class CaroGUI:
         outer = tk.Frame(self.root, bg=self.BG)
         outer.pack(fill="both", expand=True, padx=6, pady=5)
 
-        # Header luôn nằm chính giữa cửa sổ.
         header = tk.Frame(outer, bg=self.BG)
         header.pack(fill="x", pady=(0, 8))
 
@@ -142,7 +149,6 @@ class CaroGUI:
             fg="#d9b9ff", font=("Segoe UI", 9, "bold"), anchor="center"
         ).pack(anchor="center", pady=(2, 0))
 
-        # Hai khu vực dùng grid theo tỉ lệ, không khóa cứng chiều rộng.
         body = tk.Frame(outer, bg=self.BG)
         body.pack(fill="both", expand=True)
         body.grid_rowconfigure(0, weight=1)
@@ -183,7 +189,6 @@ class CaroGUI:
         )
         self.start_button.pack(fill="x", pady=(12, 0), ipady=3)
 
-        # Khung minh họa bên phải luôn cân đối với khung chọn chế độ.
         preview = tk.Frame(body, bg=self.BG)
         preview.grid(row=0, column=1, sticky="nsew", padx=(0, 0))
 
@@ -195,49 +200,49 @@ class CaroGUI:
 
         tk.Label(
             outer,
-            text="11 × 11   •   RANDOM   •   HEURISTIC   •   MINIMAX",
+            text="11 × 11   •   RANDOM   •   HEURISTIC   •   MINIMAX   •   PURE MCTS   •   ALPHAZERO",
             bg=self.BG, fg="#b99bd3", font=("Segoe UI", 9),
             anchor="center"
         ).pack(fill="x", pady=(6, 0))
 
-        self.select_mode("Người vs Người")
+        self.select_mode("Người vs Máy")
 
     def select_mode(self, mode):
-            self.mode_var.set(mode)
-            for name, button in self.mode_buttons.items():
-                button.config(
-                    relief="solid" if name == mode else "flat",
-                    highlightthickness=2 if name == mode else 0,
-                    highlightbackground="#ffffff" if name == mode else self.PANEL,
-                )
+        self.mode_var.set(mode)
+        for name, button in self.mode_buttons.items():
+            button.config(
+                relief="solid" if name == mode else "flat",
+                highlightthickness=2 if name == mode else 0,
+                highlightbackground="#ffffff" if name == mode else self.PANEL,
+            )
 
-            for widget in self.options_frame.winfo_children():
-                widget.destroy()
+        for widget in self.options_frame.winfo_children():
+            widget.destroy()
 
-            if mode == "Người vs Máy":
-                self.make_option(
-                    self.options_frame, "BẠN CHƠI QUÂN", self.human_var, ["X", "O"]
-                )
-                self.make_option(
-                    self.options_frame, "CHỌN ĐỐI THỦ AI", self.human_ai_var,
-                    ["Random", "Heuristic", "Minimax"]
-                )
-            elif mode == "Máy vs Máy":
-                self.make_option(
-                    self.options_frame, "AI ĐIỀU KHIỂN QUÂN X",
-                    self.x_agent_var, ["Random", "Heuristic", "Minimax"]
-                )
-                self.make_option(
-                    self.options_frame, "AI ĐIỀU KHIỂN QUÂN O",
-                    self.o_agent_var, ["Random", "Heuristic", "Minimax"]
-                )
-            else:
-                tk.Label(
-                    self.options_frame,
-                    text="Hai người lần lượt điều khiển X và O.",
-                    bg=self.PANEL, fg=self.MUTED,
-                    font=("Segoe UI", 10), wraplength=300, justify="center"
-                ).pack(fill="x", pady=12)
+        if mode == "Người vs Máy":
+            self.make_option(
+                self.options_frame, "BẠN CHƠI QUÂN", self.human_var, ["X", "O"]
+            )
+            self.make_option(
+                self.options_frame, "CHỌN ĐỐI THỦ AI", self.human_ai_var,
+                AGENT_OPTIONS
+            )
+        elif mode == "Máy vs Máy":
+            self.make_option(
+                self.options_frame, "AI ĐIỀU KHIỂN QUÂN X",
+                self.x_agent_var, AGENT_OPTIONS
+            )
+            self.make_option(
+                self.options_frame, "AI ĐIỀU KHIỂN QUÂN O",
+                self.o_agent_var, AGENT_OPTIONS
+            )
+        else:
+            tk.Label(
+                self.options_frame,
+                text="Hai người lần lượt điều khiển X và O.",
+                bg=self.PANEL, fg=self.MUTED,
+                font=("Segoe UI", 10), wraplength=300, justify="center"
+            ).pack(fill="x", pady=12)
 
     def draw_preview(self, event=None):
         if not hasattr(self, "preview_canvas"):
@@ -306,20 +311,47 @@ class CaroGUI:
                         outline=color, width=width
                     )
 
+    def _resolve_alphazero_checkpoint(self) -> Path | None:
+        """Ưu tiên tìm latest_model.pt hoặc best_model.pt trong thư mục checkpoints."""
+        candidates = [
+            CFG.paths.checkpoint_dir / "latest_model.pt",
+            CFG.paths.checkpoint_dir / "best_model.pt",
+        ]
+        for path in candidates:
+            if path.exists():
+                return path
+        return None
+
     def create_agent(self, name):
         if name == "Random":
             return RandomAgent()
         if name == "Heuristic":
             return HeuristicAgent()
         if name == "Minimax":
-            # Current MinimaxAgent constructor accepts depth; do not pass max_candidates.
             return MinimaxAgent(depth=2)
+        if name == "PureMCTS":
+            return PureMCTSAgent(name="PureMCTS-400")
+        if name == "AlphaZero":
+            ckpt = self._resolve_alphazero_checkpoint()
+            if ckpt is None:
+                messagebox.showwarning(
+                    "Chưa có Checkpoint",
+                    "Không tìm thấy checkpoints/latest_model.pt hoặc best_model.pt.\n"
+                    "AlphaZero sẽ chạy với trọng số khởi tạo ngẫu nhiên."
+                )
+            return AlphaZeroAgent(
+                name="AlphaZero",
+                checkpoint_path=ckpt,
+                use_tree_reuse=True,
+                use_tactical_guard=True,
+            )
         raise ValueError(f"Agent không hợp lệ: {name}")
 
     def start_game(self):
         self.mode = self.mode_var.get()
         self.env = CaroEnv()
         self.game_over = False
+        self.last_action = None
         self.paused = (self.mode == "Máy vs Máy")
         self.agents = {}
         self.human_player = 1 if self.human_var.get() == "X" else -1
@@ -459,7 +491,6 @@ class CaroGUI:
         w = max(canvas.winfo_width(), 100)
         h = max(canvas.winfo_height(), 100)
 
-        # Bàn cờ luôn là hình vuông và được căn giữa vùng bên trái.
         margin = 10
         cell = min((w - 2 * margin) / self.env.size,
                    (h - 2 * margin) / self.env.size)
@@ -480,6 +511,12 @@ class CaroGUI:
             max(8, cell * 0.20), fill=self.PURPLE, outline=""
         )
 
+        last_coord = (
+            self.env.action_to_coord(self.last_action)
+            if self.last_action is not None
+            else None
+        )
+
         for row in range(self.env.size):
             for col in range(self.env.size):
                 x1 = x0 + col * cell + gap / 2
@@ -487,10 +524,13 @@ class CaroGUI:
                 x2 = x0 + (col + 1) * cell - gap / 2
                 y2 = y0 + (row + 1) * cell - gap / 2
 
+                is_last = (last_coord == (row, col))
                 self.draw_rounded_rect(
                     canvas, x1, y1, x2, y2,
-                    max(3, cell * 0.10), fill=self.EMPTY,
-                    outline="#4f176f", width=1
+                    max(3, cell * 0.10),
+                    fill="#481575" if is_last else self.EMPTY,
+                    outline="#ffe36e" if is_last else "#4f176f",
+                    width=2 if is_last else 1
                 )
 
                 value = int(self.env.board[row, col])
@@ -505,7 +545,7 @@ class CaroGUI:
                 cy = y0 + (row + 0.5) * cell
                 r = cell * 0.12
                 canvas.create_oval(
-                    cx-r, cy-r, cx+r, cy+r,
+                    cx - r, cy - r, cx + r, cy + r,
                     outline="#fff28a", width=max(2, int(cell * 0.07))
                 )
 
@@ -561,10 +601,11 @@ class CaroGUI:
 
     def make_move(self, action):
         self.env.step(action)
+        self.last_action = action
         self.draw_board()
         self.update_status()
 
-    def update_status(self):
+    def update_status(self, thinking: bool = False):
         if self.env is None:
             return
         if self.env.done:
@@ -579,6 +620,8 @@ class CaroGUI:
             player = "X" if self.env.current_player == 1 else "O"
             if self.mode == "Máy vs Máy" and self.paused:
                 text = "ĐANG TẠM DỪNG"
+            elif thinking:
+                text = f"AI ({player}) ĐANG NGHĨ..."
             else:
                 text = f"LƯỢT: {player}"
             self.status_label.config(text=text, fg="#ffe36e")
@@ -588,7 +631,8 @@ class CaroGUI:
         if self.game_over or self.env.done:
             return
         self.cancel_ai_job()
-        self.ai_job = self.root.after(250, self.ai_turn)
+        self.update_status(thinking=True)
+        self.ai_job = self.root.after(80, self.ai_turn)
 
     def ai_turn(self):
         self.ai_job = None
@@ -608,6 +652,7 @@ class CaroGUI:
         if agent is None:
             return
         try:
+            self.root.update_idletasks()
             action = agent.get_action(self.env)
             if not self.env.is_valid_action(action):
                 raise ValueError("AI trả về nước đi không hợp lệ.")
@@ -656,6 +701,7 @@ class CaroGUI:
     def restart_game(self):
         self.cancel_ai_job()
         self.env.reset()
+        self.last_action = None
         self.game_over = False
         self.paused = (self.mode == "Máy vs Máy")
         for agent in self.agents.values():
@@ -673,6 +719,7 @@ class CaroGUI:
         self.cancel_ai_job()
         self.env = None
         self.board_canvas = None
+        self.last_action = None
         self.build_setup_screen()
 
 
