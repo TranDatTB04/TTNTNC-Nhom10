@@ -27,7 +27,7 @@ class CaroView:
     self.root = root
     self.controller = controller
 
-    self.root.title("GOKUMO 11 // CARO AI ARENA")
+    self.root.title("CARO 11 X 11// CARO AI ARENA")
     self.root.geometry("1080x760")
     self.root.minsize(800, 640)
     self.root.configure(bg=self.BG)
@@ -398,7 +398,7 @@ class CaroView:
 
     tk.Label(
         header,
-        text="◈  GOKUMO 11  ◈",
+        text="◈  CARO 11 X 11  ◈",
         bg=self.BG,
         fg=self.WHITE,
         font=(self.font_display, 28, "bold"),
@@ -581,7 +581,7 @@ class CaroView:
 
     tk.Label(
         header,
-        text="◈  GOKUMO 11  ◈",
+        text="◈  CARO 11 X 11 ◈",
         bg=self.BG,
         fg=self.WHITE,
         font=(self.font_display, 23, "bold"),
