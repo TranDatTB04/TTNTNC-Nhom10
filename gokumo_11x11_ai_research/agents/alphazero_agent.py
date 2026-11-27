@@ -32,10 +32,11 @@ class _PUCTNode:
 class AlphaZeroAgent(BaseAgent):
     """
     Main Model: AlphaZero Agent kết hợp ResNet 3 kênh + PUCT + Lọc vùng lân cận R=2.
-    Hỗ trợ:
-    - Tự động tái sử dụng cây tìm kiếm (Tree Reuse) giữa các lượt đi.
-    - Phản xạ chiến thuật tức thời (Tactical Guard): Thắng ngay & Chặn thua ngay.
-    - Nhiễu Dirichlet tại nút gốc và Temperature Scaling ổn định số học.
+    Tích hợp Tactical Guard 4 tầng (Công & Thủ):
+    1. Thắng ngay (5 quân liên tiếp).
+    2. Chặn chuỗi 4 của đối thủ.
+    3. Tạo thế thắng kép (Bốn mở hai đầu / Bốn-Ba kép) để kết liễu ván đấu.
+    4. Chặn Open-Three của đối thủ hoặc tập trung phát triển mũi tấn công Open-Three.
     """
 
     def __init__(
@@ -105,8 +106,6 @@ class AlphaZeroAgent(BaseAgent):
     ) -> np.ndarray:
         """
         Chạy `az_simulations` vòng mô phỏng PUCT và trả về vector xác suất (121,).
-        - `temperature <= 1e-3`: Trả về phân phối one-hot tại nước có visit_count cao nhất.
-        - `temperature > 1e-3`: Trả về xác suất tỷ lệ với N^(1/temperature) (ổn định số học).
         """
         action_size = env.cfg.action_size
         probs = np.zeros(action_size, dtype=np.float32)
@@ -125,25 +124,56 @@ class AlphaZeroAgent(BaseAgent):
             self._sync_tree_after_decision(env, only_action, root=None)
             return probs
 
-        # 2. Phản xạ chiến thuật tức thời: Thắng ngay hoặc Chặn thua ngay
+        # 2. Phản xạ chiến thuật tức thời (Tactical Guard Công & Thủ)
         if self.use_tactical_guard:
-            # Ưu tiên 1: Có nước ăn 5 ngay lập tức -> Đánh luôn
+            # Tầng 1: Có nước ăn 5 ngay lập tức -> Đánh luôn
             winning_action = self._find_immediate_win(env, valid_actions)
             if winning_action is not None:
                 probs[winning_action] = 1.0
                 self._sync_tree_after_decision(env, winning_action, root=None)
                 return probs
 
-            # Ưu tiên 2: Đối thủ có nước ăn 5 ở lượt sau -> Bắt buộc chặn
-            forced_blocks = self._find_forced_blocks(env, valid_actions)
-            if len(forced_blocks) == 1:
-                block_action = forced_blocks[0]
+            # Tầng 2: Đối thủ có chuỗi 4 (ăn 5 ở lượt sau) -> Bắt buộc chặn ngay
+            immediate_blocks = self._count_immediate_wins_for_player(
+                env, -env.current_player, valid_actions
+            )
+            if len(immediate_blocks) == 1:
+                block_action = immediate_blocks[0]
                 probs[block_action] = 1.0
                 self._sync_tree_after_decision(env, block_action, root=None)
                 return probs
-            elif len(forced_blocks) > 1:
-                # Nếu địch có >= 2 điểm thắng (4 mở 2 đầu), thu hẹp không gian tìm kiếm vào các điểm chặn
-                valid_actions = forced_blocks
+            elif len(immediate_blocks) > 1:
+                valid_actions = immediate_blocks
+            else:
+                # Tầng 3: Bản thân có nước tạo >= 2 điểm thắng (Bốn mở 2 đầu / Tứ-Tam kép) -> Chốt hạ
+                double_threats = self._find_double_threat_moves(
+                    env, env.current_player, valid_actions
+                )
+                if double_threats:
+                    # Nếu có nhiều nước tạo đòn kép, ưu tiên nước có prior cao nhất từ ResNet
+                    if len(double_threats) == 1:
+                        kill_action = double_threats[0]
+                        probs[kill_action] = 1.0
+                        self._sync_tree_after_decision(env, kill_action, root=None)
+                        return probs
+                    valid_actions = double_threats
+                else:
+                    # Tầng 4a: Chặn sớm Open-Three / Tứ-Tam của đối thủ
+                    forced_blocks = self._find_open_three_blocks(env, valid_actions)
+                    if len(forced_blocks) == 1:
+                        block_action = forced_blocks[0]
+                        probs[block_action] = 1.0
+                        self._sync_tree_after_decision(env, block_action, root=None)
+                        return probs
+                    elif len(forced_blocks) > 1:
+                        valid_actions = forced_blocks
+                    else:
+                        # Tầng 4b: Chủ động tìm nước nối chuỗi 3 mở hai đầu (tạo áp lực tấn công)
+                        attack_setups = self._find_offensive_open_threes(
+                            env, env.current_player, valid_actions
+                        )
+                        if attack_setups:
+                            valid_actions = attack_setups
 
         # 3. Khởi tạo hoặc kế thừa nút gốc từ cây tìm kiếm trước đó
         root = self._prepare_root(env, valid_actions, add_dirichlet_noise)
@@ -162,7 +192,6 @@ class AlphaZeroAgent(BaseAgent):
 
             # Evaluation & Expansion
             if sim_env.done:
-                # Giá trị từ góc nhìn của `sim_env.current_player` (người chuẩn bị đi nhưng đã thua)
                 leaf_value = 0.0 if sim_env.winner == 0 else -1.0
             else:
                 leaf_actions = sim_env.get_neighbor_actions(radius=self.radius)
@@ -188,7 +217,7 @@ class AlphaZeroAgent(BaseAgent):
             self._sync_tree_after_decision(env, best_action, root=root)
             return probs
 
-        # Tính xác suất theo Temperature bằng Log-sum-exp trick (tránh tràn float32 khi temp nhỏ)
+        # Tính xác suất theo Temperature bằng Log-sum-exp trick
         non_zero = visit_counts > 0
         if np.any(non_zero):
             log_visits = np.zeros_like(visit_counts, dtype=np.float64)
@@ -331,27 +360,109 @@ class AlphaZeroAgent(BaseAgent):
                 return action
         return None
 
-    def _find_forced_blocks(
+    def _count_immediate_wins_for_player(
+        self, env: CaroEnv, player: int, candidate_actions: List[int]
+    ) -> List[int]:
+        """Trả về danh sách các ô giúp `player` tạo thành >= 5 quân liên tiếp ngay lập tức."""
+        empty = env.cfg.empty
+        wins: List[int] = []
+        for action in candidate_actions:
+            r, c = env.action_to_coord(action)
+            if env.board[r, c] != empty:
+                continue
+            env.board[r, c] = player
+            win_line = env._check_win_from_pos(r, c, player)
+            env.board[r, c] = empty
+            if win_line is not None:
+                wins.append(action)
+        return wins
+
+    def _find_double_threat_moves(
+        self, env: CaroEnv, player: int, valid_actions: List[int]
+    ) -> List[int]:
+        """
+        Tìm các nước đi giúp `player` tạo ra >= 2 điểm thắng trực tiếp ở lượt kế tiếp
+        (ví dụ: Bốn mở hai đầu hoặc đòn đôi Bốn-Ba).
+        """
+        empty = env.cfg.empty
+        double_threats: List[int] = []
+        for action in valid_actions:
+            r, c = env.action_to_coord(action)
+            if env.board[r, c] != empty:
+                continue
+            env.board[r, c] = player
+            next_wins = self._count_immediate_wins_for_player(
+                env, player, valid_actions
+            )
+            env.board[r, c] = empty
+            if len(next_wins) >= 2:
+                double_threats.append(action)
+        return double_threats
+
+    def _find_open_three_blocks(
         self, env: CaroEnv, valid_actions: List[int]
     ) -> List[int]:
         """
-        Kiểm tra toàn bộ ô trống xem đối thủ có nước nào tạo >= 5 quân ở lượt kế tiếp không.
-        Trả về danh sách các ô bắt buộc phải chặn ngay lập tức.
+        Phát hiện xem đối thủ có nước tạo >= 2 điểm thắng (từ chuỗi 3 mở hai đầu) không.
+        Trả về danh sách các ô chặn trực tiếp + các nước phản công tạo chuỗi 4 của bản thân.
         """
         opponent = -env.current_player
+        player = env.current_player
         empty = env.cfg.empty
-        threat_actions: List[int] = []
 
-        # Quét trên valid_actions (vùng lân cận R=2 bao phủ toàn bộ chuỗi 4 của đối thủ)
+        open_four_creators = self._find_double_threat_moves(
+            env, opponent, valid_actions
+        )
+        if not open_four_creators:
+            return []
+
+        # Cho phép bản thân đánh phản công tạo chuỗi 4 (buộc đối thủ phải đỡ)
+        counter_fours: List[int] = []
+        for action in valid_actions:
+            if action in open_four_creators:
+                continue
+            r, c = env.action_to_coord(action)
+            if env.board[r, c] != empty:
+                continue
+            env.board[r, c] = player
+            my_next_wins = self._count_immediate_wins_for_player(
+                env, player, valid_actions
+            )
+            env.board[r, c] = empty
+            if my_next_wins:
+                counter_fours.append(action)
+
+        return list(dict.fromkeys(open_four_creators + counter_fours))
+
+    def _find_offensive_open_threes(
+        self, env: CaroEnv, player: int, valid_actions: List[int]
+    ) -> List[int]:
+        """
+        Tìm các nước đi xây dựng 'Ba mở hai đầu' (tức là sau nước này, ở lượt kế tiếp
+        bản thân có >= 2 cách đánh tạo thành Bốn mở hai đầu / thế thắng kép).
+        """
+        empty = env.cfg.empty
+        open_threes: List[int] = []
+
+        # Chỉ kiểm tra khi bàn cờ đã có ít nhất 2 quân của bản thân để tối ưu tốc độ
+        if np.sum(env.board == player) < 2:
+            return []
+
         for action in valid_actions:
             r, c = env.action_to_coord(action)
-            env.board[r, c] = opponent
-            opp_win = env._check_win_from_pos(r, c, opponent)
+            if env.board[r, c] != empty:
+                continue
+            env.board[r, c] = player
+            # Đếm số nước có thể nâng cấp thành đòn thắng kép ở bước kế tiếp
+            follow_up_double_threats = self._find_double_threat_moves(
+                env, player, valid_actions
+            )
             env.board[r, c] = empty
-            if opp_win is not None:
-                threat_actions.append(action)
 
-        return threat_actions
+            if len(follow_up_double_threats) >= 2:
+                open_threes.append(action)
+
+        return open_threes
 
     def _select_child(self, node: _PUCTNode) -> Tuple[int, _PUCTNode]:
         sqrt_parent_visits = math.sqrt(max(1, node.visit_count))

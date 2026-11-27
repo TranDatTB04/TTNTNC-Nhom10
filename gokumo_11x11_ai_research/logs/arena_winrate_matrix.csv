@@ -1,7 +1,7 @@
-agent \ opponent,HeuristicAgent,MinimaxAgent,AlphaZero-Iter25,AlphaZero-Iter15,PureMCTS-400,RandomAgent
-HeuristicAgent,-,50.0,100.0,100.0,100.0,100.0
-MinimaxAgent,50.0,-,100.0,100.0,100.0,100.0
-AlphaZero-Iter25,0.0,0.0,-,50.0,100.0,100.0
-AlphaZero-Iter15,0.0,0.0,50.0,-,50.0,100.0
-PureMCTS-400,0.0,0.0,0.0,50.0,-,100.0
+agent \ opponent,MinimaxAgent,HeuristicAgent,AlphaZero-Iter15,AlphaZero-Iter25,PureMCTS-400,RandomAgent
+MinimaxAgent,-,50.0,75.0,100.0,100.0,100.0
+HeuristicAgent,50.0,-,50.0,50.0,100.0,100.0
+AlphaZero-Iter15,25.0,50.0,-,50.0,100.0,100.0
+AlphaZero-Iter25,0.0,50.0,50.0,-,100.0,100.0
+PureMCTS-400,0.0,0.0,0.0,0.0,-,100.0
 RandomAgent,0.0,0.0,0.0,0.0,0.0,-
