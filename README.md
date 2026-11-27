@@ -1,4 +1,4 @@
-# 🎮 GOKUMO 11×11 — Tác Tử AI Chơi Cờ Caro Theo Kiến Trúc AlphaZero
+# 🎮 CARO 11×11 — Tác Tử AI Chơi Cờ Caro Theo Kiến Trúc AlphaZero
 
 Khung nghiên cứu và triển khai hoàn chỉnh phục vụ việc huấn luyện, đánh giá và trực quan hóa tác tử **Học tăng cường tự học theo kiến trúc AlphaZero** (`Dual-Head ResNet` + `PUCT MCTS`) cho trò chơi **Cờ Caro (Gomoku)** trên bàn cờ kích thước $11 \times 11$.
 
