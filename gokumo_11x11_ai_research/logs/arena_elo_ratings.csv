@@ -1,0 +1,7 @@
+rank,agent,elo,games_played,wins,losses,draws,win_rate_pct,avg_move_ms
+1,HeuristicAgent,1523.81,50,40,0,10,80.0,26.64
+2,MinimaxAgent,1479.03,50,40,0,10,80.0,376.74
+3,AlphaZero-Iter25,1201.57,50,25,25,0,50.0,587.05
+4,AlphaZero-Iter15,1144.15,50,20,30,0,40.0,571.47
+5,PureMCTS-400,992.44,50,15,35,0,30.0,4528.4
+6,RandomAgent,859.01,50,0,50,0,0.0,0.11
